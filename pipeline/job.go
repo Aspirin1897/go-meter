@@ -133,6 +133,7 @@ func (job *Job) generate(bg *BufferGroup, wg *sync.WaitGroup) {
 
 func (job *Job) Write(file *os.File, jobWg *sync.WaitGroup, ch chan [2]int) error {
 	var i int
+	timestamp := make([]byte, 8)
 	bg := NewBufferGroup(job.bs, 2)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -141,14 +142,12 @@ func (job *Job) Write(file *os.File, jobWg *sync.WaitGroup, ch chan [2]int) erro
 
 	for i = job.start; i < job.end; i++ {
 		buffer := bg.GetReadyBuf()
-		var err error
-		if i == 100 {
-			da := []byte{}
-			_, err = file.WriteAt(da, int64(i*job.bs))
-		} else {
-			_, err = file.WriteAt(buffer.value, int64(i*job.bs))
+		timeNow := uint64(time.Now().Unix())
+		binary.BigEndian.PutUint64(timestamp, timeNow)
+		for index, value := range timestamp {
+			buffer.value[job.bs-(8-index)] = value
 		}
-		// _, err := file.WriteAt(buffer.value, int64(i*job.bs))
+		_, err := file.WriteAt(buffer.value, int64(i*job.bs))
 		if err != nil {
 			fn := func() error {
 				fmt.Println("重试")
@@ -194,11 +193,12 @@ func (job *Job) Compare(file *os.File, jobWg *sync.WaitGroup, ch chan [2]int) er
 	for i := jobNew.start; i < jobNew.end; i++ {
 		buffer := bg.GetReadyBuf()
 		_, err := file.ReadAt(block, int64(i*jobNew.bs))
-		if !bytes.Equal(block, buffer.value) {
+		if !bytes.Equal(block[:job.bs-8], buffer.value[:job.bs-8]) {
 			n := i
 			m := i * job.bs
+			time := parseTimestamp(block[job.bs-8:])
 			record_block(block, buffer.value)
-			log.Fatal("数据不一致，block: ", n, ", char: ", m)
+			log.Fatal("数据不一致，block: ", n, ", char: ", m, ", time: ", time)
 		}
 		if err != nil && err != io.EOF {
 			return err
@@ -217,4 +217,13 @@ func record_block(block1, block2 []byte) {
 	file2.Write(block2)
 	file1.Close()
 	file2.Close()
+}
+
+func parseTimestamp(timedata []byte) string {
+	var timestamp int64
+	timeLayout := "2006-01-02 15:04:05" //转化所需的固定模板
+	temp := bytes.NewBuffer(timedata)
+	binary.Read(temp, binary.BigEndian, &timestamp)
+	datetime := time.Unix(timestamp, 0).Format(timeLayout)
+	return datetime
 }
