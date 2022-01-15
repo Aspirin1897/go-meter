@@ -141,7 +141,14 @@ func (job *Job) Write(file *os.File, jobWg *sync.WaitGroup, ch chan [2]int) erro
 
 	for i = job.start; i < job.end; i++ {
 		buffer := bg.GetReadyBuf()
-		_, err := file.WriteAt(buffer.value, int64(i*job.bs))
+		var err error
+		if i == 100 {
+			da := []byte{}
+			_, err = file.WriteAt(da, int64(i*job.bs))
+		} else {
+			_, err = file.WriteAt(buffer.value, int64(i*job.bs))
+		}
+		// _, err := file.WriteAt(buffer.value, int64(i*job.bs))
 		if err != nil {
 			fn := func() error {
 				fmt.Println("重试")
@@ -188,7 +195,10 @@ func (job *Job) Compare(file *os.File, jobWg *sync.WaitGroup, ch chan [2]int) er
 		buffer := bg.GetReadyBuf()
 		_, err := file.ReadAt(block, int64(i*jobNew.bs))
 		if !bytes.Equal(block, buffer.value) {
-			log.Fatal("数据不一致")
+			n := i
+			m := i * job.bs
+			record_block(block, buffer.value)
+			log.Fatal("数据不一致，block: ", n, ", char: ", m)
 		}
 		if err != nil && err != io.EOF {
 			return err
@@ -198,4 +208,13 @@ func (job *Job) Compare(file *os.File, jobWg *sync.WaitGroup, ch chan [2]int) er
 	wg.Wait()
 	jobWg.Done()
 	return nil
+}
+
+func record_block(block1, block2 []byte) {
+	file1, _ := os.OpenFile("file_device", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	file2, _ := os.OpenFile("file_raw", os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	file1.Write(block1)
+	file2.Write(block2)
+	file1.Close()
+	file2.Close()
 }
