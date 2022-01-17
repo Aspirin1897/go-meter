@@ -196,7 +196,7 @@ func (job *Job) Compare(file *os.File, jobWg *sync.WaitGroup, ch chan [2]int) er
 		if !bytes.Equal(block[:job.bs-8], buffer.value[:job.bs-8]) {
 			n := i
 			m := i * job.bs
-			time := parseTimestamp(block[job.bs-8:])
+			time := getBlockTime(file, i-1, job.bs) // 获取上一个block的时间
 			record_block(block, buffer.value)
 			log.Fatal("数据不一致，block: ", n, ", char: ", m, ", time: ", time)
 		}
@@ -219,10 +219,13 @@ func record_block(block1, block2 []byte) {
 	file2.Close()
 }
 
-func parseTimestamp(timedata []byte) string {
+func getBlockTime(file *os.File, blockID int, blockSize int) string {
 	var timestamp int64
 	timeLayout := "2006-01-02 15:04:05" //转化所需的固定模板
-	temp := bytes.NewBuffer(timedata)
+	block := make([]byte, blockSize)
+	file.ReadAt(block, int64(blockID*blockSize))
+	block = block[blockSize-8:]
+	temp := bytes.NewBuffer(block)
 	binary.Read(temp, binary.BigEndian, &timestamp)
 	datetime := time.Unix(timestamp, 0).Format(timeLayout)
 	return datetime
