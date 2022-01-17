@@ -152,6 +152,7 @@ func (job *Job) Write(file *os.File, jobWg *sync.WaitGroup, ch chan [2]int) erro
 			fn := func() error {
 				fmt.Println("重试")
 				_, err := file.WriteAt(buffer.value, int64(i*job.bs))
+				fmt.Println(err)
 				return err
 			}
 			err = Retry(30, fn)
@@ -193,15 +194,16 @@ func (job *Job) Compare(file *os.File, jobWg *sync.WaitGroup, ch chan [2]int) er
 	for i := jobNew.start; i < jobNew.end; i++ {
 		buffer := bg.GetReadyBuf()
 		_, err := file.ReadAt(block, int64(i*jobNew.bs))
+		if err != nil && err != io.EOF {
+			fmt.Println(err)
+			return err
+		}
 		if !bytes.Equal(block[:job.bs-8], buffer.value[:job.bs-8]) {
 			n := i
 			m := i * job.bs
 			time := getBlockTime(file, i-1, job.bs) // 获取上一个block的时间
 			record_block(block, buffer.value)
 			log.Fatal("数据不一致，block: ", n, ", char: ", m, ", time: ", time)
-		}
-		if err != nil && err != io.EOF {
-			return err
 		}
 		buffer.Free()
 	}
